@@ -4,7 +4,7 @@ SOAP Authentication Demo Application
 A basic Flask app with SOAP-based authentication for Ubuntu
 """
 
-from flask import Flask, request, session, redirect, url_for, render_template_string
+from flask import Flask, request, session, redirect, url_for, render_template_string, jsonify
 from spyne import Application, rpc, ServiceBase, Unicode, Boolean, Fault
 from spyne.protocol.soap import Soap11
 from spyne.server.wsgi import WsgiApplication
@@ -28,6 +28,10 @@ USERS_DB = {
         'password_hash': hashlib.sha256('demo123'.encode()).hexdigest(),
         'email': 'demo@example.com'
     },
+    'michaeloleary': {
+        'password_hash': hashlib.sha256('TooHotSummer2025'.encode()).hexdigest(),
+        'email': 'user@example.com'
+    },
 }
 
 # Session storage (token -> user_info)
@@ -48,7 +52,7 @@ class AuthenticationService(ServiceBase):
             raise Fault('Client', 'Invalid username or password')
         
         password_hash = hashlib.sha256(password.encode()).hexdigest()
-        if USERS_DB[username] != password_hash:
+        if USERS_DB[username]['password_hash'] != password_hash:
             raise Fault('Client', 'Invalid username or password')
         
         # Generate session token
@@ -57,6 +61,7 @@ class AuthenticationService(ServiceBase):
         # Store session
         ACTIVE_SESSIONS[session_token] = {
             'username': username,
+            'email': USERS_DB[username]['email'],
             'created_at': datetime.now(),
             'last_accessed': datetime.now()
         }
@@ -102,6 +107,24 @@ class AuthenticationService(ServiceBase):
         # Update last accessed time
         session['last_accessed'] = datetime.now()
         return session['username']
+    
+    @rpc(Unicode, Unicode, _returns=Unicode)
+    def validate_password(ctx, username, password):
+        """
+        Validate user password and return email if correct
+        Returns: email address on success, raises fault on failure
+        """
+        # Check if user exists
+        if username not in USERS_DB:
+            raise Fault('Client', 'Invalid username or password')
+        
+        # Check password
+        password_hash = hashlib.sha256(password.encode()).hexdigest()
+        if USERS_DB[username]['password_hash'] != password_hash:
+            raise Fault('Client', 'Invalid username or password')
+        
+        # Return email address
+        return USERS_DB[username]['email']
     
     @rpc(Unicode, _returns=Boolean)
     def logout(ctx, session_token):
@@ -152,9 +175,10 @@ LOGIN_TEMPLATE = """
         <div class="info">
             <h3>Available Test Users:</h3>
             <ul>
-                <li><strong>admin</strong> / password123</li>
-                <li><strong>user1</strong> / mypassword</li>
-                <li><strong>demo</strong> / demo123</li>
+                <li><strong>admin</strong> / password123 (admin@example.com)</li>
+                <li><strong>user1</strong> / mypassword (user1@example.com)</li>
+                <li><strong>demo</strong> / demo123 (demo@example.com)</li>
+                <li><strong>michaeloleary</strong> / TooHotSummer2025 (user@example.com)</li>
             </ul>
         </div>
         
@@ -182,6 +206,42 @@ LOGIN_TEMPLATE = """
 </html>
 """
 
+LOGOUT_TEMPLATE = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SOAP Auth Demo - Logout</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 50px; }
+        .container { max-width: 500px; margin: 0 auto; text-align: center; }
+        .logout-success { background: #d1ecf1; padding: 20px; margin-bottom: 20px; border: 1px solid #bee5eb; border-radius: 4px; }
+        .actions { margin-top: 30px; }
+        button, .btn { background: #007bff; color: white; padding: 10px 20px; border: none; cursor: pointer; text-decoration: none; display: inline-block; border-radius: 4px; }
+        button:hover, .btn:hover { background: #0056b3; }
+        h1 { color: #333; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Logout Successful</h1>
+        
+        <div class="logout-success">
+            <h3>✅ You have been successfully logged out</h3>
+            <p>Your session has been invalidated and you have been securely logged out of the system.</p>
+        </div>
+        
+        <div class="actions">
+            <a href="{{ url_for('login') }}" class="btn">Login Again</a>
+        </div>
+        
+        <div style="margin-top: 30px; font-size: 12px; color: #666;">
+            <p>Session cleared at: {{ logout_time }}</p>
+        </div>
+    </div>
+</body>
+</html>
+"""
+
 DASHBOARD_TEMPLATE = """
 <!DOCTYPE html>
 <html>
@@ -202,6 +262,7 @@ DASHBOARD_TEMPLATE = """
         <div class="user-info">
             <h3>Authenticated User</h3>
             <p><strong>Username:</strong> {{ username }}</p>
+            <p><strong>Email:</strong> {{ email }}</p>
             <p><strong>Login Time:</strong> {{ login_time }}</p>
         </div>
         
@@ -213,7 +274,7 @@ DASHBOARD_TEMPLATE = """
         
         <p>This page is only accessible after SOAP authentication!</p>
         
-        <form method="post" action="{{ url_for('logout') }}">
+        <form method="post" action="{{ url_for('logout_page') }}">
             <button type="submit">Logout</button>
         </form>
     </div>
@@ -286,12 +347,14 @@ def dashboard():
     
     return render_template_string(DASHBOARD_TEMPLATE,
                                 username=username,
+                                email=session_info.get('email', 'Unknown'),
                                 session_token=session_token,
                                 login_time=session_info.get('created_at', 'Unknown'),
                                 last_accessed=session_info.get('last_accessed', 'Unknown'))
 
-@app.route('/logout', methods=['POST'])
-def logout():
+@app.route('/logout', methods=['POST', 'GET'])
+def logout_page():
+    """Separate logout page"""
     session_token = session.get('token')
     if session_token:
         # Logout via SOAP
@@ -299,7 +362,75 @@ def logout():
         service.logout(None, session_token)
         session.pop('token', None)
     
-    return redirect(url_for('login'))
+    logout_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    return render_template_string(LOGOUT_TEMPLATE, logout_time=logout_time)
+
+@app.route('/api/validate-password', methods=['POST'])
+def api_validate_password():
+    """API endpoint to validate password and return email"""
+    try:
+        # Get JSON data from request
+        data = request.get_json()
+        
+        if not data or 'username' not in data or 'password' not in data:
+            return jsonify({'error': 'Username and password required'}), 400
+        
+        username = data['username']
+        password = data['password']
+        
+        # Validate via SOAP service
+        service = AuthenticationService()
+        email = service.validate_password(None, username, password)
+        
+        return jsonify({
+            'success': True,
+            'username': username,
+            'email': email,
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': 'Invalid username or password'
+        }), 401
+
+@app.route('/api/get-email', methods=['GET', 'POST'])
+def api_get_email():
+    """API endpoint to get email address by username"""
+    try:
+        # Handle both GET and POST requests
+        if request.method == 'GET':
+            username = request.args.get('username')
+        else:  # POST
+            data = request.get_json()
+            if not data or 'username' not in data:
+                return jsonify({'error': 'Username required'}), 400
+            username = data['username']
+        
+        if not username:
+            return jsonify({'error': 'Username required'}), 400
+        
+        # Check if user exists
+        if username not in USERS_DB:
+            return jsonify({
+                'success': False,
+                'error': 'User not found'
+            }), 404
+        
+        # Return email address
+        return jsonify({
+            'success': True,
+            'username': username,
+            'email': USERS_DB[username]['email'],
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': 'Internal server error'
+        }), 500
 
 @app.route('/soap', methods=['GET', 'POST'])
 def soap_service():
@@ -354,6 +485,3 @@ if __name__ == '__main__':
     
     # Start Flask app
     app.run(host='0.0.0.0', port=5000, debug=True)
-
-    # I generated this app using Claude Code. Feel free to copy, modify, and use it as you like.
-    # testing github actions
