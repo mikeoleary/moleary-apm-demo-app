@@ -11,7 +11,15 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
+      - name: SSH connection check
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+          script: |
+            echo "Successfully connected!"
+            ls -al /home/azureuser/soap-auth-demo
       - name: Deploy file via SSH
         uses: appleboy/ssh-action@v1.0.0
         with:
