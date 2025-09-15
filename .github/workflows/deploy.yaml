@@ -27,4 +27,4 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
           source: 'app.py' # <--- This input now works correctly
-          target: '/home/azureuser/soap-auth-demo/app.py' # <--- This is the remote path
+          target: '/home/azureuser/soap-auth-demo' # <--- This is the remote path
