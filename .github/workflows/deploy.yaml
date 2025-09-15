@@ -19,4 +19,4 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
           script: |
-            scp -o StrictHostKeyChecking=no app.py ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/home/azureuser/soap-auth-demo/app.py
+            scp -i ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }} -o StrictHostKeyChecking=no app.py ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/home/azureuser/soap-auth-demo/app.py
