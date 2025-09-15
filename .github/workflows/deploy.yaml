@@ -20,11 +20,11 @@ jobs:
           script: |
             echo "Successfully connected!"
             ls -al /home/azureuser/soap-auth-demo
-      - name: Deploy file via SSH
-        uses: appleboy/ssh-action@v1.0.0
+      - name: Deploy file via SCP
+        uses: appleboy/scp-action@v0.1.7 # <--- Use the dedicated SCP action
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
-          script: |
-            scp -o StrictHostKeyChecking=no app.py ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/home/azureuser/soap-auth-demo/app.py
+          source: 'app.py' # <--- This input now works correctly
+          target: '/home/azureuser/soap-auth-demo/app.py' # <--- This is the remote path
