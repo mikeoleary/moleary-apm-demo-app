@@ -326,7 +326,7 @@ def login():
             session['token'] = session_token
             return redirect(url_for('dashboard'))
         else:
-            return render_template_string(LOGIN_TEMPLATE, error="Invalid credentials")
+            return render_template_string(LOGIN_TEMPLATE, error="Invalid credentials"), 401
     
     return render_template_string(LOGIN_TEMPLATE)
 
